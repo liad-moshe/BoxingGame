@@ -1,0 +1,638 @@
+@page "/match/{Code}"
+@using DomainMatch = BoxingGame.Domain.Match.Match
+@using BoxingGame.Domain.Boxers
+@using BoxingGame.Domain.Combat
+@using BoxingGame.Domain.Match
+@using BoxingGame.Domain.Strikes
+@using BoxingGame.Networking.Dtos
+@using Microsoft.AspNetCore.WebUtilities
+@inject MatchRegistry Registry
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="match-container" tabindex="0"
+     @ref="_container" style="outline:none;flex-direction:column;gap:0">
+
+@if (_match == null)
+{
+    <div class="overlay">
+        <p>Match "@Code" not found. <a href="/">Back to lobby</a></p>
+    </div>
+}
+else if (!_localMode && _playerId == null)
+{
+    <div class="overlay">
+        <p>Match is full. <a href="/">Back to lobby</a></p>
+    </div>
+}
+else
+{
+    <svg viewBox="222 140 456 200" xmlns="http://www.w3.org/2000/svg"
+         class="game-svg">
+
+        <CrowdSvg />
+        <RingSvg />
+
+        @if (_snap != null)
+        {
+            <BoxerSvg Snapshot="@_snap.P1" TrunksColor="#c0392b" />
+            <BoxerSvg Snapshot="@_snap.P2" TrunksColor="#2980b9" />
+
+            @* ── "YOU" marker — only in online mode so each player knows their boxer ─ *@
+            @if (!_localMode && _playerId != null)
+            {
+                float myX = _playerId == "P1" ? _snap.P1.PositionX : _snap.P2.PositionX;
+                <SvgText X="@myX.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)"
+                         Y="163" FontSize="9" Fill="#f1c40f" FontFamily="monospace"
+                         FontWeight="bold" TextAnchor="middle">YOU</SvgText>
+            }
+
+            <HudSvg P1="@_snap.P1" P2="@_snap.P2" />
+
+            @* ── Round + Score + Timer ─────────────────────────────────────────── *@
+            @if (_snap.Phase is MatchPhase.InRound or MatchPhase.RefereeCount)
+            {
+                <SvgText X="450" Y="149" FontSize="11" Fill="white" FontFamily="monospace"
+                         TextAnchor="middle" FontWeight="bold">
+                    ROUND @_snap.CurrentRound / 12  @($"{(int)(_snap.RoundRemainSec / 60)}:{(int)(_snap.RoundRemainSec % 60):D2}")
+                </SvgText>
+                <SvgText X="270" Y="149" FontSize="11" Fill="#e74c3c" FontFamily="monospace"
+                         TextAnchor="middle">
+                    RED @_snap.P1Score
+                </SvgText>
+                <SvgText X="630" Y="149" FontSize="11" Fill="#3498db" FontFamily="monospace"
+                         TextAnchor="middle">
+                    BLUE @_snap.P2Score
+                </SvgText>
+            }
+
+            @if (_snap.Phase == MatchPhase.RefereeCount || _snap.IsClinching)
+            {
+                float clinchMidX = _snap.IsClinching
+                    ? (_snap.P1.PositionX + _snap.P2.PositionX) / 2f
+                    : 450f;
+                <RefereeSvg Count="@_snap.RefereeCount"
+                            IsClinching="@_snap.IsClinching"
+                            ClinchStage="@_snap.ClinchStage"
+                            ClinchStageProgress="@_snap.ClinchStageProgress"
+                            ClinchMidX="@clinchMidX" />
+            }
+
+            @* ── Between-rounds overlay ───────────────────────────────────────── *@
+            @if (_snap.Phase == MatchPhase.BetweenRounds)
+            {
+                <rect x="150" y="136" width="600" height="260" fill="black" opacity="0.6" />
+                <SvgText X="450" Y="248" FontSize="26" Fill="white" FontFamily="monospace"
+                         TextAnchor="middle" FontWeight="bold">
+                    END OF ROUND @_snap.CurrentRound
+                </SvgText>
+                <SvgText X="450" Y="276" FontSize="14" Fill="#aaa" FontFamily="monospace"
+                         TextAnchor="middle">
+                    Next round in @((int)Math.Ceiling(_snap.BetweenRoundsRemainSec))s
+                </SvgText>
+                <SvgText X="315" Y="302" FontSize="13" Fill="#e74c3c" FontFamily="monospace"
+                         TextAnchor="middle">
+                    RED: @_snap.P1Score pts
+                </SvgText>
+                <SvgText X="585" Y="302" FontSize="13" Fill="#3498db" FontFamily="monospace"
+                         TextAnchor="middle">
+                    BLUE: @_snap.P2Score pts
+                </SvgText>
+            }
+
+            @* ── Finished overlay ─────────────────────────────────────────────── *@
+            @if (_snap.Phase == MatchPhase.Finished)
+            {
+                <rect x="150" y="136" width="600" height="260" fill="black" opacity="0.55" />
+
+                @if (_snap.P1.State == BoxerStateKind.KnockedOut ||
+                     _snap.P2.State == BoxerStateKind.KnockedOut)
+                {
+                    <SvgText X="450" Y="252" FontSize="68" Fill="white" FontFamily="monospace"
+                             FontWeight="bold" TextAnchor="middle" Stroke="#c0392b" StrokeWidth="2">KO!</SvgText>
+                    <SvgText X="450" Y="295" FontSize="22" Fill="#eee" FontFamily="monospace"
+                             TextAnchor="middle">
+                        @(_snap.P1.State == BoxerStateKind.KnockedOut
+                            ? _snap.P2.DisplayName
+                            : _snap.P1.DisplayName) wins!
+                    </SvgText>
+                }
+                else
+                {
+                    <SvgText X="450" Y="237" FontSize="28" Fill="white" FontFamily="monospace"
+                             FontWeight="bold" TextAnchor="middle">FINAL DECISION</SvgText>
+                    <SvgText X="450" Y="268" FontSize="22" Fill="#eee" FontFamily="monospace"
+                             TextAnchor="middle">
+                        @(_snap.P1Score > _snap.P2Score ? $"{_snap.P1.DisplayName} wins!"
+                        : _snap.P2Score > _snap.P1Score ? $"{_snap.P2.DisplayName} wins!"
+                        : "Draw!")
+                    </SvgText>
+                    <SvgText X="450" Y="296" FontSize="15" Fill="#aaa" FontFamily="monospace"
+                             TextAnchor="middle">RED @_snap.P1Score — @_snap.P2Score BLUE</SvgText>
+                }
+            }
+
+            @if (_snap.Phase == MatchPhase.WaitingForPlayers)
+            {
+                <rect x="250" y="178" width="400" height="95" fill="#1a1a2e" rx="10" opacity="0.9" />
+                <SvgText X="450" Y="188" FontSize="20" Fill="white" FontFamily="monospace" TextAnchor="middle">
+                    Match code: @Code
+                </SvgText>
+                <SvgText X="450" Y="222" FontSize="14" Fill="#aaa" FontFamily="monospace" TextAnchor="middle">
+                    Waiting for opponent...
+                </SvgText>
+            }
+        }
+    </svg>
+
+    @* ── Controls: touch overlay on mobile, keyboard hints on desktop ────────── *@
+    @if (_isMobile)
+    {
+        @* ── Mobile virtual buttons ────────────────────────────────────────── *@
+        @* Left zone: BACK / FWD movement (hold).
+           Right zone: full combat — defensive row + all punch types + body modifier.
+           @onpointerleave on hold-buttons releases the action if finger drifts off. *@
+        <div class="touch-controls">
+
+            @* Movement — button order flips for P2 so the arrow always matches
+               the screen direction the boxer actually moves:
+               P1 (left side, faces right): [◀ BACK]  [FWD ▶]
+               P2 (right side, faces left): [◀ FWD]   [BACK ▶]  *@
+            <div class="touch-zone touch-zone-left">
+                @if (_playerId == "P2")
+                {
+                    <button class="touch-btn touch-move"
+                            @onpointerdown="() => OnTouchMoveDown(MovementDirection.Forward)"
+                            @onpointerup="OnTouchMoveUp"
+                            @onpointerleave="OnTouchMoveUp">◀ FWD</button>
+                    <button class="touch-btn touch-move"
+                            @onpointerdown="() => OnTouchMoveDown(MovementDirection.Backward)"
+                            @onpointerup="OnTouchMoveUp"
+                            @onpointerleave="OnTouchMoveUp">BACK ▶</button>
+                }
+                else
+                {
+                    <button class="touch-btn touch-move"
+                            @onpointerdown="() => OnTouchMoveDown(MovementDirection.Backward)"
+                            @onpointerup="OnTouchMoveUp"
+                            @onpointerleave="OnTouchMoveUp">◀ BACK</button>
+                    <button class="touch-btn touch-move"
+                            @onpointerdown="() => OnTouchMoveDown(MovementDirection.Forward)"
+                            @onpointerup="OnTouchMoveUp"
+                            @onpointerleave="OnTouchMoveUp">FWD ▶</button>
+                }
+            </div>
+
+            @* Combat *@
+            <div class="touch-zone touch-zone-right">
+
+                @* Defensive row: Slip (tap) | Duck (tap) | Block (hold) *@
+                <div class="touch-row">
+                    <button class="touch-btn touch-slip"
+                            @onpointerdown="OnTouchSlipPressed">SLIP</button>
+                    <button class="touch-btn touch-duck"
+                            @onpointerdown="OnTouchDuckPressed">DUCK</button>
+                    <button class="touch-btn touch-block"
+                            @onpointerdown="OnTouchBlockDown"
+                            @onpointerup="OnTouchBlockUp"
+                            @onpointerleave="OnTouchBlockUp">🛡 BLOCK</button>
+                </div>
+
+                @* Jabs + Body modifier row *@
+                <div class="touch-row">
+                    <button class="touch-btn touch-jab"
+                            @onpointerdown="() => OnTouchStrike(LeftJab.Instance.Name)">L JAB</button>
+                    <button class="touch-btn touch-jab"
+                            @onpointerdown="() => OnTouchStrike(RightJab.Instance.Name)">R JAB</button>
+                    <button class="touch-btn touch-body"
+                            @onpointerdown="OnTouchBodyDown"
+                            @onpointerup="OnTouchBodyUp"
+                            @onpointerleave="OnTouchBodyUp">BODY</button>
+                </div>
+
+                @* Hooks row *@
+                <div class="touch-row">
+                    <button class="touch-btn touch-hook"
+                            @onpointerdown="() => OnTouchStrike(LeftHook.Instance.Name)">L HOOK</button>
+                    <button class="touch-btn touch-hook"
+                            @onpointerdown="() => OnTouchStrike(RightHook.Instance.Name)">R HOOK</button>
+                </div>
+
+                @* Uppercuts row *@
+                <div class="touch-row">
+                    <button class="touch-btn touch-upper"
+                            @onpointerdown="() => OnTouchStrike(LeftUppercut.Instance.Name)">L UPPR</button>
+                    <button class="touch-btn touch-upper"
+                            @onpointerdown="() => OnTouchStrike(RightUppercut.Instance.Name)">R UPPR</button>
+                </div>
+
+            </div>
+        </div>
+    }
+    else
+    {
+        @* ── Desktop keyboard controls bar (unchanged) ───────────────────── *@
+        <div class="controls-bar">
+            @if (_localMode)
+            {
+                @* 2-player local: show both control sets *@
+                <div class="controls-row controls-red">
+                    <span class="player-tag red-tag">RED</span>
+                    <span>A / D &nbsp;Move</span>
+                    <span>W &nbsp;Sprint</span>
+                    <span>S &nbsp;Block</span>
+                    <span>Q &nbsp;Slip</span>
+                    <span>Z &nbsp;Duck</span>
+                    <span>E+punch &nbsp;Body</span>
+                    <span>F / G &nbsp;Jab</span>
+                    <span>R / T &nbsp;Hook</span>
+                    <span>C / V &nbsp;Uppercut</span>
+                </div>
+                <div class="controls-row controls-blue">
+                    <span class="player-tag blue-tag">BLUE</span>
+                    <span>← / → &nbsp;Move</span>
+                    <span>↑ &nbsp;Sprint</span>
+                    <span>↓ &nbsp;Block</span>
+                    <span>/ &nbsp;Slip</span>
+                    <span>, &nbsp;Duck</span>
+                    <span>M+punch &nbsp;Body</span>
+                    <span>I / O &nbsp;Jab</span>
+                    <span>K / L &nbsp;Hook</span>
+                    <span>U / P &nbsp;Uppercut</span>
+                </div>
+            }
+            else
+            {
+                @* Single player (online): show P1 controls only *@
+                <div class="controls-row controls-red">
+                    <span class="player-tag red-tag">YOU</span>
+                    <span>A / D &nbsp;Move</span>
+                    <span>W &nbsp;Sprint</span>
+                    <span>S &nbsp;Block</span>
+                    <span>Q &nbsp;Slip</span>
+                    <span>Z &nbsp;Duck</span>
+                    <span>E+punch &nbsp;Body</span>
+                    <span>F / G &nbsp;Jab</span>
+                    <span>R / T &nbsp;Hook</span>
+                    <span>C / V &nbsp;Uppercut</span>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_snap?.Phase == MatchPhase.Finished)
+    {
+        <div style="text-align:center;margin-top:12px">
+            <a href="/">Back to lobby</a>
+        </div>
+    }
+}
+</div>
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+
+    private DomainMatch?   _match;
+    private string?        _playerId;
+    private bool           _localMode;
+    private MatchSnapshot? _snap;
+    private ElementReference _container;
+
+    // ── P1 input state ─────────────────────────────────────────────────────────
+    private bool              _p1DefenseHeld;
+    private bool              _p1SprintHeld;
+    private bool              _p1BodyModifier;
+    private bool              _p1DodgePressed;
+    private bool              _p1DuckPressed;
+    private MovementDirection _p1Movement = MovementDirection.None;
+
+    // ── P2 input state (local 2P only — not used in AI mode) ──────────────────
+    private bool              _p2DefenseHeld;
+    private bool              _p2SprintHeld;
+    private bool              _p2BodyModifier;
+    private bool              _p2DodgePressed;
+    private bool              _p2DuckPressed;
+    private MovementDirection _p2Movement = MovementDirection.None;
+
+    // ── Sound version tracking ─────────────────────────────────────────────────
+    private int _lastSoundThrow;
+    private int _lastSoundLand;
+    private int _lastSoundBell;
+    private int _lastSoundBlock;
+
+    // ── Mobile detection ──────────────────────────────────────────────────────
+    private bool _isMobile;
+
+    // ── JS key-capture handle ──────────────────────────────────────────────────
+    private DotNetObjectReference<Match>? _dotNetRef;
+
+    protected override Task OnInitializedAsync()
+    {
+        _match = Registry.GetMatch(Code.ToUpperInvariant());
+        if (_match == null) return Task.CompletedTask;
+
+        _localMode = _match.IsLocalMode;
+
+        if (_localMode)
+        {
+            _playerId = "P1";
+        }
+        else
+        {
+            var qs = QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+            bool isSouthpaw = qs.TryGetValue("sw", out var swVal) && swVal == "1";
+            _playerId = _match.TryRegisterPlayer(Guid.NewGuid().ToString(), isSouthpaw);
+            if (_playerId == null) return Task.CompletedTask;
+        }
+
+        _match.StateChanged += OnMatchStateChanged;
+        _snap = BuildSnapshot(_match);
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _match != null)
+        {
+            // Detect touch device — drives whether virtual buttons or keyboard
+            // hints are shown below the ring.
+            _isMobile = await JS.InvokeAsync<bool>("boxingGame.isMobile");
+
+            // Use document-level JS key listeners so inputs always work
+            // regardless of which element has focus.
+            _dotNetRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("boxingGame.initKeyCapture", _dotNetRef); } catch { }
+
+            if (_isMobile) StateHasChanged();
+        }
+
+        if (_snap != null)
+        {
+            if (_snap.SoundGenThrow != _lastSoundThrow)
+            {
+                _lastSoundThrow = _snap.SoundGenThrow;
+                try { await JS.InvokeVoidAsync("boxingGame.playThrow"); } catch { }
+            }
+            if (_snap.SoundGenLand != _lastSoundLand)
+            {
+                _lastSoundLand = _snap.SoundGenLand;
+                try { await JS.InvokeVoidAsync("boxingGame.playLand"); } catch { }
+            }
+            if (_snap.SoundGenBell != _lastSoundBell)
+            {
+                _lastSoundBell = _snap.SoundGenBell;
+                try { await JS.InvokeVoidAsync("boxingGame.playBell"); } catch { }
+            }
+            if (_snap.SoundGenBlock != _lastSoundBlock)
+            {
+                _lastSoundBlock = _snap.SoundGenBlock;
+                try { await JS.InvokeVoidAsync("boxingGame.playBlock"); } catch { }
+            }
+        }
+    }
+
+    private void OnMatchStateChanged()
+    {
+        _snap = BuildSnapshot(_match!);
+        InvokeAsync(StateHasChanged);
+    }
+
+    // ── Key handling ──────────────────────────────────────────────────────────
+    // P1 (RED): W=Sprint  A/D=Move  S=Block  Q=Slip  Z=Duck  E=Body  F=LJab  G=RJab  R=LHook  T=RHook  C=LUpper  V=RUpper
+    // P2 (BLUE): ↑=Sprint ←/→=Move ↓=Block  /=Slip  ,=Duck  M=Body  I=LJab  O=RJab  K=LHook  L=RHook  U=LUpper  P=RUpper
+    //
+    // Called from JavaScript document-level listeners (boxing.js initKeyCapture)
+    // so inputs fire regardless of which element has focus.
+
+    [JSInvokable]
+    public void HandleKeyDown(string key)
+    {
+        if (_match == null) return;
+        if (_match.Phase != MatchPhase.InRound) return;
+
+        // ── P1 ──────────────────────────────────────────────────────────────────
+        string? p1Attack = key switch
+        {
+            "f" or "F" => LeftJab.Instance.Name,
+            "g" or "G" => RightJab.Instance.Name,
+            "r" or "R" => LeftHook.Instance.Name,
+            "t" or "T" => RightHook.Instance.Name,
+            "c" or "C" => LeftUppercut.Instance.Name,
+            "v" or "V" => RightUppercut.Instance.Name,
+            _           => null
+        };
+        if (key is "s" or "S") _p1DefenseHeld  = true;
+        if (key is "a" or "A") _p1Movement     = MovementDirection.Backward;
+        if (key is "d" or "D") _p1Movement     = MovementDirection.Forward;
+        if (key is "w" or "W") _p1SprintHeld   = true;
+        if (key is "e" or "E") _p1BodyModifier = true;
+        if (key is "q" or "Q") _p1DodgePressed = true;
+        if (key is "z" or "Z") _p1DuckPressed  = true;
+
+        _match.ApplyInput(_playerId!, _p1Movement, p1Attack, _p1DefenseHeld,
+                          _p1SprintHeld, _p1BodyModifier, _p1DodgePressed, _p1DuckPressed);
+        _p1DodgePressed = false;
+        _p1DuckPressed  = false;
+
+        // ── P2 local 2-player ────────────────────────────────────────────────
+        if (!_localMode) return;
+
+        string? p2Attack = key switch
+        {
+            "i" or "I" => LeftJab.Instance.Name,
+            "o" or "O" => RightJab.Instance.Name,
+            "k" or "K" => LeftHook.Instance.Name,
+            "l" or "L" => RightHook.Instance.Name,
+            "u" or "U" => LeftUppercut.Instance.Name,
+            "p" or "P" => RightUppercut.Instance.Name,
+            _           => null
+        };
+        if (key == "ArrowDown")  _p2DefenseHeld  = true;
+        if (key == "ArrowUp")    _p2SprintHeld   = true;
+        if (key is "m" or "M")   _p2BodyModifier = true;
+        if (key == "/")          _p2DodgePressed = true;
+        if (key == ",")          _p2DuckPressed  = true;
+        if (key == "ArrowLeft")  _p2Movement = MovementDirection.Forward;
+        if (key == "ArrowRight") _p2Movement = MovementDirection.Backward;
+
+        _match.ApplyInput("P2", _p2Movement, p2Attack, _p2DefenseHeld,
+                          _p2SprintHeld, _p2BodyModifier, _p2DodgePressed, _p2DuckPressed);
+        _p2DodgePressed = false;
+        _p2DuckPressed  = false;
+    }
+
+    [JSInvokable]
+    public void HandleKeyUp(string key)
+    {
+        if (_match == null) return;
+
+        // ── P1 releases ────────────────────────────────────────────────────────
+        if (key is "s" or "S") _p1DefenseHeld  = false;
+        if (key is "w" or "W") _p1SprintHeld   = false;
+        if (key is "e" or "E") _p1BodyModifier = false;
+        if (key is "a" or "A" && _p1Movement == MovementDirection.Backward) _p1Movement = MovementDirection.None;
+        if (key is "d" or "D" && _p1Movement == MovementDirection.Forward)  _p1Movement = MovementDirection.None;
+
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld, _p1SprintHeld, _p1BodyModifier);
+
+        if (!_localMode) return;
+
+        // ── P2 releases ────────────────────────────────────────────────────────
+        if (key == "ArrowDown")  _p2DefenseHeld  = false;
+        if (key == "ArrowUp")    _p2SprintHeld   = false;
+        if (key is "m" or "M")   _p2BodyModifier = false;
+        if (key == "ArrowLeft"  && _p2Movement == MovementDirection.Forward)  _p2Movement = MovementDirection.None;
+        if (key == "ArrowRight" && _p2Movement == MovementDirection.Backward) _p2Movement = MovementDirection.None;
+
+        _match.ApplyInput("P2", _p2Movement, null, _p2DefenseHeld, _p2SprintHeld, _p2BodyModifier);
+    }
+
+    // ── Touch / virtual button handlers (mobile) ─────────────────────────────
+    // Called directly from Blazor @onpointerdown / @onpointerup events on the
+    // virtual button overlay — no JS round-trip required.
+    // All calls use _playerId! so online P2 correctly controls their own boxer.
+
+    private void OnTouchMoveDown(MovementDirection dir)
+    {
+        if (_match == null || _match.Phase != MatchPhase.InRound) return;
+        _p1Movement = dir;
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld, _p1SprintHeld, _p1BodyModifier);
+    }
+
+    private void OnTouchMoveUp()
+    {
+        if (_match == null) return;
+        _p1Movement = MovementDirection.None;
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld, _p1SprintHeld, _p1BodyModifier);
+    }
+
+    private void OnTouchBlockDown()
+    {
+        if (_match == null || _match.Phase != MatchPhase.InRound) return;
+        _p1DefenseHeld = true;
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld, _p1SprintHeld, _p1BodyModifier);
+    }
+
+    private void OnTouchBlockUp()
+    {
+        if (_match == null) return;
+        _p1DefenseHeld = false;
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld, _p1SprintHeld, _p1BodyModifier);
+    }
+
+    private void OnTouchStrike(string strikeName)
+    {
+        if (_match == null || _match.Phase != MatchPhase.InRound) return;
+        _match.ApplyInput(_playerId!, _p1Movement, strikeName, _p1DefenseHeld, _p1SprintHeld, _p1BodyModifier);
+    }
+
+    private void OnTouchSlipPressed()
+    {
+        if (_match == null || _match.Phase != MatchPhase.InRound) return;
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld,
+                          _p1SprintHeld, _p1BodyModifier, dodgePressed: true, duckPressed: false);
+    }
+
+    private void OnTouchDuckPressed()
+    {
+        if (_match == null || _match.Phase != MatchPhase.InRound) return;
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld,
+                          _p1SprintHeld, _p1BodyModifier, dodgePressed: false, duckPressed: true);
+    }
+
+    private void OnTouchBodyDown()
+    {
+        if (_match == null || _match.Phase != MatchPhase.InRound) return;
+        _p1BodyModifier = true;
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld, _p1SprintHeld, _p1BodyModifier);
+    }
+
+    private void OnTouchBodyUp()
+    {
+        if (_match == null) return;
+        _p1BodyModifier = false;
+        _match.ApplyInput(_playerId!, _p1Movement, null, _p1DefenseHeld, _p1SprintHeld, _p1BodyModifier);
+    }
+
+    // ── Snapshot ──────────────────────────────────────────────────────────────
+
+    private static MatchSnapshot BuildSnapshot(DomainMatch m) =>
+        new(m.MatchCode, m.Phase, m.RefereeCount, BoxerSnap(m.P1, m.P2), BoxerSnap(m.P2, m.P1),
+            m.CurrentRound, m.P1Score, m.P2Score,
+            Math.Max(0f, 5f - m.BetweenRoundsElapsedMs / 1000f),
+            m.RoundRemainMs / 1000f,
+            m.SoundGenThrow, m.SoundGenLand, m.SoundGenBell, m.SoundGenBlock,
+            m.IsClinching, m.ClinchStage, m.ClinchStageProgress);
+
+    private static BoxerSnapshot BoxerSnap(Boxer b, Boxer opponent)
+    {
+        // Always face toward the opponent regardless of starting stance.
+        // Side.Left  = faces right (no scale flip in BoxerSvg).
+        // Side.Right = faces left  (scale(-1,1) applied in BoxerSvg).
+        Side facing = b.PositionX <= opponent.PositionX ? Side.Left : Side.Right;
+        float progress = 0f;
+        if (b.CurrentStrike != null && b.CurrentPhase.HasValue)
+        {
+            int phaseDur = b.CurrentPhase.Value switch
+            {
+                StrikePhase.Startup  => b.CurrentStrike.StartupMs,
+                StrikePhase.Active   => b.CurrentStrike.ActiveMs,
+                StrikePhase.Recovery => b.CurrentStrike.RecoveryMs,
+                _                    => 1
+            };
+            progress = phaseDur > 0 ? Math.Clamp(b.PhaseElapsedMs / phaseDur, 0f, 1f) : 1f;
+        }
+
+        float dodgeProgress = 0f;
+        if (b.DodgePhase.HasValue)
+        {
+            bool isDuck = b.State == BoxerStateKind.Ducking;
+            int dodgePhaseDur = b.DodgePhase.Value switch
+            {
+                StrikePhase.Startup  => isDuck ? DomainMatch.DuckStartupMs  : DomainMatch.DodgeStartupMs,
+                StrikePhase.Active   => isDuck ? DomainMatch.DuckActiveMs   : DomainMatch.DodgeActiveMs,
+                StrikePhase.Recovery => isDuck ? DomainMatch.DuckRecoveryMs : DomainMatch.DodgeRecoveryMs,
+                _                    => 1
+            };
+            dodgeProgress = dodgePhaseDur > 0
+                ? Math.Clamp(b.DodgeElapsedMs / dodgePhaseDur, 0f, 1f)
+                : 1f;
+        }
+
+        float defenseProgress = b.State == BoxerStateKind.Defending
+            ? Math.Clamp(b.DefenseElapsedMs / DomainMatch.BlockRaiseMs, 0f, 1f)
+            : 0f;
+
+        return new BoxerSnapshot(
+            b.Id, b.DisplayName, b.PositionX, b.Health, b.Stats.MaxHealth,
+            b.HeadHealth, b.Stats.MaxHeadHealth,
+            b.BodyHealth, b.Stats.MaxBodyHealth,
+            b.Stamina, b.Stats.MaxStamina,
+            b.State, facing,
+            b.CurrentStrike?.Name, b.CurrentPhase, progress,
+            b.CurrentDefense?.Name,
+            b.IsSouthpaw,
+            b.IdleAnimMs / 1200f,
+            b.PendingMovement,
+            b.WalkCycleMs / 350f,
+            b.DodgePhase,
+            dodgeProgress,
+            b.HeightFactor,
+            defenseProgress);
+    }
+
+    public void Dispose()
+    {
+        if (_match != null)
+        {
+            _match.StateChanged -= OnMatchStateChanged;
+            if (!_localMode && _playerId != null)
+                _match.UnregisterPlayer(_playerId);
+        }
+        // Remove document-level key listeners (fire-and-forget is fine; the page
+        // is navigating away so any in-flight SignalR call will be abandoned anyway)
+        _ = JS.InvokeVoidAsync("boxingGame.disposeKeyCapture");
+        _dotNetRef?.Dispose();
+    }
+}

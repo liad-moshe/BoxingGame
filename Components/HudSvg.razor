@@ -1,0 +1,87 @@
+@using BoxingGame.Networking.Dtos
+
+@code {
+    [Parameter, EditorRequired] public BoxerSnapshot P1 { get; set; } = default!;
+    [Parameter, EditorRequired] public BoxerSnapshot P2 { get; set; } = default!;
+
+    private string Fmt(float v) => v.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+}
+
+@*
+    Health bar is split into two adjacent zones:
+      P1 (left → right): [HEAD 101 px | BODY 55 px]  total = 156 px
+      P2 (right ← left): [BODY 55 px  | HEAD 101 px] mirrored
+
+    Head zone (65 % of 156 = 101 px) — player colour (red / blue)
+    Body zone (35 % of 156 =  55 px) — warm brown accent
+    Each fills proportionally to its own sub-pool.
+    A thin dark divider separates the zones.
+*@
+
+@{
+    // ── P1 bar constants & fills ──────────────────────────────────────────────
+    const float BarLeft = 226f;
+    const float HeadW   = 101f;   // 65 % of 156
+    const float BodyW   =  55f;   // 35 % of 156
+    const float BarTotW = 156f;
+    const float DivX1   = BarLeft + HeadW;   // x = 327
+
+    float p1HeadFill = P1.MaxHeadHealth > 0f ? P1.HeadHealth / P1.MaxHeadHealth * HeadW : 0f;
+    float p1BodyFill = P1.MaxBodyHealth > 0f ? P1.BodyHealth / P1.MaxBodyHealth * BodyW  : 0f;
+    float p1StaFill  = P1.MaxStamina    > 0f ? P1.Stamina    / P1.MaxStamina    * BarTotW : 0f;
+
+    // ── P2 bar (right-to-left mirror: head on right 101 px, body on left 55 px)
+    const float P2BarRight = 676f;
+    const float P2BarLeft  = 520f;
+    const float P2DivX     = P2BarLeft + BodyW;   // x = 575
+
+    float p2HeadFill = P2.MaxHeadHealth > 0f ? P2.HeadHealth / P2.MaxHeadHealth * HeadW : 0f;
+    float p2BodyFill = P2.MaxBodyHealth > 0f ? P2.BodyHealth / P2.MaxBodyHealth * BodyW  : 0f;
+    float p2StaFill  = P2.MaxStamina    > 0f ? P2.Stamina    / P2.MaxStamina    * BarTotW : 0f;
+
+    // Head fills from right edge of its zone (P2BarRight - fill) inward
+    float p2HeadFillX = P2BarRight - p2HeadFill;
+    // Body fills from divider leftward
+    float p2BodyFillX = P2DivX     - p2BodyFill;
+    float p2StaFillX  = P2BarRight - p2StaFill;
+}
+
+@* ── P1 — left side ─────────────────────────────────────────────────────────── *@
+<SvgText X="228" Y="149" FontSize="12" Fill="white" FontFamily="monospace">@P1.DisplayName</SvgText>
+
+@* Tiny zone labels *@
+<SvgText X="277" Y="151" FontSize="6" Fill="#666" FontFamily="monospace" TextAnchor="middle">HEAD</SvgText>
+<SvgText X="349" Y="151" FontSize="6" Fill="#666" FontFamily="monospace" TextAnchor="middle">BODY</SvgText>
+
+@* Background *@
+<rect x="226" y="152" width="156" height="10" rx="2" fill="#222" />
+@* Head fill (red) *@
+<rect x="226" y="152" width="@Fmt(p1HeadFill)" height="10" fill="#c0392b" />
+@* Body fill (warm brown) *@
+<rect x="@Fmt(DivX1)" y="152" width="@Fmt(p1BodyFill)" height="10" fill="#a04000" />
+@* Zone divider *@
+<rect x="@Fmt(DivX1 - 1f)" y="152" width="2" height="10" fill="#111" />
+
+@* Stamina bar *@
+<rect x="226" y="164" width="156" height="4" rx="2" fill="#222" />
+<rect x="226" y="164" width="@Fmt(p1StaFill)" height="4" rx="2" fill="#f1c40f" />
+
+@* ── P2 — right side, zones fill right-to-left ──────────────────────────────── *@
+<SvgText X="674" Y="149" FontSize="12" Fill="white" FontFamily="monospace" TextAnchor="end">@P2.DisplayName</SvgText>
+
+@* Tiny zone labels *@
+<SvgText X="547" Y="151" FontSize="6" Fill="#666" FontFamily="monospace" TextAnchor="middle">BODY</SvgText>
+<SvgText X="625" Y="151" FontSize="6" Fill="#666" FontFamily="monospace" TextAnchor="middle">HEAD</SvgText>
+
+@* Background *@
+<rect x="520" y="152" width="156" height="10" rx="2" fill="#222" />
+@* Head fill (blue) — fills right-to-left within the right 101 px zone *@
+<rect x="@Fmt(p2HeadFillX)" y="152" width="@Fmt(p2HeadFill)" height="10" fill="#2980b9" />
+@* Body fill (warm brown) — fills right-to-left within the left 55 px zone *@
+<rect x="@Fmt(p2BodyFillX)" y="152" width="@Fmt(p2BodyFill)" height="10" fill="#a04000" />
+@* Zone divider *@
+<rect x="@Fmt(P2DivX - 1f)" y="152" width="2" height="10" fill="#111" />
+
+@* Stamina bar *@
+<rect x="520" y="164" width="156" height="4" rx="2" fill="#222" />
+<rect x="@Fmt(p2StaFillX)" y="164" width="@Fmt(p2StaFill)" height="4" rx="2" fill="#f1c40f" />

@@ -1,0 +1,268 @@
+@* CrowdSvg — Ringside bar crowd: tables, beer, raised arms, head bobs.
+   Drawn entirely in SVG; no @Parameters so Blazor's diff never patches
+   these nodes after the first render — CSS animations run uninterrupted.
+   Two depth layers: a far back-row (heavier blur) and a near front-row
+   (lighter blur) give a sense of depth without distracting from the fight.
+
+   Coordinate system: ring first-rope is at y=200.  The crowd occupies the
+   strip y=140–200, sitting ringside just above / behind the rope barrier.  *@
+
+<defs>
+    @* Near row: subtle soft-focus *@
+    <filter id="cl-blur-near" x="-12%" y="-12%" width="124%" height="124%">
+        <feGaussianBlur stdDeviation="1.1"/>
+    </filter>
+    @* Far row: more blurred, smaller figures feel further away *@
+    <filter id="cl-blur-far" x="-18%" y="-18%" width="136%" height="136%">
+        <feGaussianBlur stdDeviation="2.0"/>
+    </filter>
+</defs>
+
+@* ── Venue atmosphere ─────────────────────────────────────────────────────── *@
+@* Dark ceiling / back-wall above the ring *@
+<rect x="150" y="136" width="600" height="66" fill="#080810"/>
+@* Faint warm glow along the ring apron edge — light spilling upward *@
+<rect x="155" y="192" width="590" height="10" fill="#c05010" opacity="0.10"/>
+
+@* ── Far / back-row standing spectators (heavier blur, smaller) ───────────── *@
+<g filter="url(#cl-blur-far)" opacity="0.68">
+
+    @* Each back-row person: translate to (cx, base), head at cy−14, body cy−9..cy+3 *@
+
+    @* BK1 — both arms raised *@
+    <g transform="translate(255,178)">
+        <rect x="-3.5" y="-9" width="7" height="12" fill="#181828"/>
+        <circle cx="0" cy="-14" r="4" fill="#a07050"/>
+        <rect class="cl-al cl-d4" x="-5.5" y="-8" width="2.5" height="8" fill="#181828" rx="1"/>
+        <rect class="cl-ar cl-d4" x="3"    y="-8" width="2.5" height="8" fill="#181828" rx="1"/>
+    </g>
+
+    @* BK2 — right arm raised, head bob *@
+    <g transform="translate(362,175)">
+        <rect x="-3.5" y="-9" width="7" height="12" fill="#1a1820"/>
+        <circle class="cl-hb cl-d6" cx="0" cy="-14" r="4" fill="#a07050"/>
+        <rect x="-5.5" y="-8" width="2.5" height="8" fill="#1a1820" rx="1"/>
+        <rect class="cl-ar cl-d6" x="3" y="-8" width="2.5" height="8" fill="#1a1820" rx="1"/>
+    </g>
+
+    @* BK3 — both arms raised (centre, visible) *@
+    <g transform="translate(450,177)">
+        <rect x="-3.5" y="-9" width="7" height="12" fill="#182018"/>
+        <circle class="cl-hb cl-d9" cx="0" cy="-14" r="4" fill="#a07050"/>
+        <rect class="cl-al cl-d9" x="-5.5" y="-8" width="2.5" height="8" fill="#182018" rx="1"/>
+        <rect class="cl-ar cl-d9" x="3"    y="-8" width="2.5" height="8" fill="#182018" rx="1"/>
+    </g>
+
+    @* BK4 — right arm raised *@
+    <g transform="translate(565,175)">
+        <rect x="-3.5" y="-9" width="7" height="12" fill="#201818"/>
+        <circle cx="0" cy="-14" r="4" fill="#a07050"/>
+        <rect x="-5.5" y="-8" width="2.5" height="8" fill="#201818" rx="1"/>
+        <rect class="cl-ar cl-d2" x="3" y="-8" width="2.5" height="8" fill="#201818" rx="1"/>
+    </g>
+
+    @* BK5 — left arm raised *@
+    <g transform="translate(650,178)">
+        <rect x="-3.5" y="-9" width="7" height="12" fill="#181820"/>
+        <circle class="cl-hb cl-d5" cx="0" cy="-14" r="4" fill="#a07050"/>
+        <rect class="cl-al cl-d5" x="-5.5" y="-8" width="2.5" height="8" fill="#181820" rx="1"/>
+        <rect x="3" y="-8" width="2.5" height="8" fill="#181820" rx="1"/>
+    </g>
+
+</g>
+
+@* ── Near / front-row seated spectators at tables (lighter blur) ──────────── *@
+@* Each person: translate to (cx, tableY).
+   Head circle at (0, −22) r=5.  Body rect (−4, −16) 8×14.
+   Left arm (−7, −14) 3×10.  Right arm (4, −14) 3×10.
+   Beer mug on table at various offsets.                                        *@
+<g filter="url(#cl-blur-near)" opacity="0.84">
+
+    @* ═══ TABLE 1  x=222–260 ═══ *@
+    <rect x="222" y="196" width="38" height="3" fill="#1e1008" rx="1"/>
+
+    @* P1a — watcher, head bob *@
+    <g transform="translate(230,197)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#1e2a40"/>
+        <circle class="cl-hb cl-d1" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#1e2a40" rx="1"/>
+        <rect x="4"  y="-14" width="3" height="10" fill="#1e2a40" rx="1"/>
+        @* beer on table *@
+        <rect x="12" y="-5" width="4" height="6" fill="#c8a030" rx="1"/>
+        <ellipse cx="14" cy="-5.5" rx="2.5" ry="1" fill="#f0e090"/>
+    </g>
+
+    @* P1b — right arm raised *@
+    <g transform="translate(250,197)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#2a1528"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#2a1528" rx="1"/>
+        <rect class="cl-ar cl-d0" x="4" y="-14" width="3" height="10" fill="#2a1528" rx="1"/>
+    </g>
+
+    @* ═══ TABLE 2  x=264–310 ═══ *@
+    <rect x="264" y="196" width="46" height="3" fill="#1e1008" rx="1"/>
+
+    @* P2a — left arm raised *@
+    <g transform="translate(273,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#1a2a18"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect class="cl-al cl-d3" x="-7" y="-14" width="3" height="10" fill="#1a2a18" rx="1"/>
+        <rect x="4" y="-14" width="3" height="10" fill="#1a2a18" rx="1"/>
+    </g>
+
+    @* P2b — BOTH arms raised *@
+    <g transform="translate(288,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#202030"/>
+        <circle class="cl-hb cl-d2" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect class="cl-al cl-d2" x="-7" y="-14" width="3" height="10" fill="#202030" rx="1"/>
+        <rect class="cl-ar cl-d2" x="4"  y="-14" width="3" height="10" fill="#202030" rx="1"/>
+    </g>
+
+    @* P2c — watcher + beer on table *@
+    <g transform="translate(304,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#2a1a10"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#2a1a10" rx="1"/>
+        <rect x="4"  y="-14" width="3" height="10" fill="#2a1a10" rx="1"/>
+        <rect x="-16" y="-5" width="4" height="6" fill="#c8a030" rx="1"/>
+        <ellipse cx="-14" cy="-5.5" rx="2.5" ry="1" fill="#f0e090"/>
+    </g>
+
+    @* ═══ TABLE 3  x=320–364 ═══ *@
+    <rect x="320" y="196" width="44" height="3" fill="#1e1008" rx="1"/>
+
+    @* P3a — watcher, head bob *@
+    <g transform="translate(330,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#301a20"/>
+        <circle class="cl-hb cl-d5" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#301a20" rx="1"/>
+        <rect x="4"  y="-14" width="3" height="10" fill="#301a20" rx="1"/>
+    </g>
+
+    @* P3b — right arm raised *@
+    <g transform="translate(351,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#1e2a40"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#1e2a40" rx="1"/>
+        <rect class="cl-ar cl-d4" x="4" y="-14" width="3" height="10" fill="#1e2a40" rx="1"/>
+    </g>
+
+    @* ═══ TABLE 4  x=378–436 (centre — most visible) ═══ *@
+    <rect x="378" y="196" width="58" height="3" fill="#1e1008" rx="1"/>
+
+    @* P4a — BOTH arms raised (most excited) *@
+    <g transform="translate(390,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#2a1528"/>
+        <circle class="cl-hb cl-d7" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect class="cl-al cl-d7" x="-7" y="-14" width="3" height="10" fill="#2a1528" rx="1"/>
+        <rect class="cl-ar cl-d7" x="4"  y="-14" width="3" height="10" fill="#2a1528" rx="1"/>
+    </g>
+
+    @* P4b — watcher + beer *@
+    <g transform="translate(408,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#1a2a18"/>
+        <circle class="cl-hb cl-d8" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#1a2a18" rx="1"/>
+        <rect x="4"  y="-14" width="3" height="10" fill="#1a2a18" rx="1"/>
+        <rect x="12" y="-5" width="4" height="6" fill="#c8a030" rx="1"/>
+        <ellipse cx="14" cy="-5.5" rx="2.5" ry="1" fill="#f0e090"/>
+    </g>
+
+    @* P4c — left arm raised *@
+    <g transform="translate(427,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#202030"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect class="cl-al cl-d6" x="-7" y="-14" width="3" height="10" fill="#202030" rx="1"/>
+        <rect x="4" y="-14" width="3" height="10" fill="#202030" rx="1"/>
+    </g>
+
+    @* ═══ TABLE 5  x=450–496 ═══ *@
+    <rect x="450" y="196" width="46" height="3" fill="#1e1008" rx="1"/>
+
+    @* P5a — right arm raised *@
+    <g transform="translate(460,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#2a1a10"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#2a1a10" rx="1"/>
+        <rect class="cl-ar cl-d9" x="4" y="-14" width="3" height="10" fill="#2a1a10" rx="1"/>
+    </g>
+
+    @* P5b — watcher, head bob + beer *@
+    <g transform="translate(480,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#301a20"/>
+        <circle class="cl-hb cl-d0" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#301a20" rx="1"/>
+        <rect x="4"  y="-14" width="3" height="10" fill="#301a20" rx="1"/>
+        <rect x="-16" y="-5" width="4" height="6" fill="#c8a030" rx="1"/>
+        <ellipse cx="-14" cy="-5.5" rx="2.5" ry="1" fill="#f0e090"/>
+    </g>
+
+    @* ═══ TABLE 6  x=508–562 ═══ *@
+    <rect x="508" y="196" width="54" height="3" fill="#1e1008" rx="1"/>
+
+    @* P6a — BOTH arms raised *@
+    <g transform="translate(518,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#1e2a40"/>
+        <circle class="cl-hb cl-d1" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect class="cl-al cl-d1" x="-7" y="-14" width="3" height="10" fill="#1e2a40" rx="1"/>
+        <rect class="cl-ar cl-d1" x="4"  y="-14" width="3" height="10" fill="#1e2a40" rx="1"/>
+    </g>
+
+    @* P6b — watcher *@
+    <g transform="translate(536,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#2a1528"/>
+        <circle class="cl-hb cl-d4" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#2a1528" rx="1"/>
+        <rect x="4"  y="-14" width="3" height="10" fill="#2a1528" rx="1"/>
+    </g>
+
+    @* P6c — left arm raised *@
+    <g transform="translate(554,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#1a2a18"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect class="cl-al cl-d5" x="-7" y="-14" width="3" height="10" fill="#1a2a18" rx="1"/>
+        <rect x="4" y="-14" width="3" height="10" fill="#1a2a18" rx="1"/>
+    </g>
+
+    @* ═══ TABLE 7  x=570–618 ═══ *@
+    <rect x="570" y="196" width="48" height="3" fill="#1e1008" rx="1"/>
+
+    @* P7a — watcher, head bob + beer *@
+    <g transform="translate(580,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#202030"/>
+        <circle class="cl-hb cl-d2" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#202030" rx="1"/>
+        <rect x="4"  y="-14" width="3" height="10" fill="#202030" rx="1"/>
+        <rect x="12" y="-5" width="4" height="6" fill="#c8a030" rx="1"/>
+        <ellipse cx="14" cy="-5.5" rx="2.5" ry="1" fill="#f0e090"/>
+    </g>
+
+    @* P7b — right arm raised *@
+    <g transform="translate(601,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#2a1a10"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#2a1a10" rx="1"/>
+        <rect class="cl-ar cl-d3" x="4" y="-14" width="3" height="10" fill="#2a1a10" rx="1"/>
+    </g>
+
+    @* ═══ TABLE 8  x=625–668 ═══ *@
+    <rect x="625" y="196" width="43" height="3" fill="#1e1008" rx="1"/>
+
+    @* P8a — left arm raised *@
+    <g transform="translate(635,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#301a20"/>
+        <circle cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect class="cl-al cl-d0" x="-7" y="-14" width="3" height="10" fill="#301a20" rx="1"/>
+        <rect x="4" y="-14" width="3" height="10" fill="#301a20" rx="1"/>
+    </g>
+
+    @* P8b — watcher, head bob *@
+    <g transform="translate(653,196)">
+        <rect x="-4" y="-16" width="8" height="14" fill="#1e2a40"/>
+        <circle class="cl-hb cl-d6" cx="0" cy="-22" r="5" fill="#b08060"/>
+        <rect x="-7" y="-14" width="3" height="10" fill="#1e2a40" rx="1"/>
+        <rect x="4"  y="-14" width="3" height="10" fill="#1e2a40" rx="1"/>
+    </g>
+
+</g>
