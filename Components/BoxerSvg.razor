@@ -1,0 +1,566 @@
+@using BoxingGame.Domain.Boxers
+@using BoxingGame.Domain.Combat
+@using BoxingGame.Domain.Defenses
+@using BoxingGame.Domain.Strikes
+@using BoxingGame.Networking.Dtos
+
+@code {
+    [Parameter, EditorRequired] public BoxerSnapshot Snapshot { get; set; } = default!;
+    [Parameter, EditorRequired] public string TrunksColor { get; set; } = "#c0392b";
+
+    // ── Anatomical constants (local coords: Y negative = upward, Y=0 = floor) ─
+    private const float ShoulderLX   = -18f;
+    private const float ShoulderLY   = -88f;
+    private const float ShoulderRX   =  18f;
+    private const float ShoulderRY   = -88f;
+    private const float HeadDefaultY = -120f;
+    private const float HeadRadius   =  18f;
+    private const float GloveRadius  =  10f;
+
+    // ── Boxing-stance leg geometry ────────────────────────────────────────────
+    // Hip attachment points are offset to match foot direction:
+    //   lead leg attaches from the FORWARD side of the body base (+X)
+    //   rear  leg attaches from the BACKWARD side                 (−X)
+    // This prevents the legs from crossing each other in the side view.
+    private const float LeadHipX  =  7f;
+    private const float RearHipX  = -7f;
+
+    // Knee and foot positions — all lead values are positive (forward),
+    // all rear values are negative (backward) so legs never cross.
+    private const float LeadKneeX = 18f;
+    private const float LeadFootX = 30f;
+    private const float BackKneeX = -18f;
+    private const float BackFootX = -26f;
+    private const float BaseKneeY = -34f;   // knee height above floor
+
+    // ── Pose sampling ─────────────────────────────────────────────────────────
+    private (float lEx, float lEy, float lGx, float lGy,
+             float rEx, float rEy, float rGx, float rGy,
+             float hox, float hoy) GetPose()
+    {
+        var state = Snapshot.State;
+
+        if (state is BoxerStateKind.KnockedDown or BoxerStateKind.KnockedOut)
+            return (0,0,0,0,0,0,0,0,0,0);
+
+        if (state == BoxerStateKind.Hurt)
+            return (2f,-68f,18f,-65f,   2f,-68f,12f,-65f,   -14f,6f);
+
+        if (state == BoxerStateKind.Defending)
+        {
+            var kf = Snapshot.CurrentDefenseName == Duck.Instance.Name
+                ? Duck.Instance.Frames.Hold
+                : BothHandsBlock.Instance.Frames.Hold;
+
+            // Ease-out so the arms shoot up quickly and decelerate as they settle
+            // into position — 1 − (1−t)² gives a natural deceleration curve.
+            float raw  = Snapshot.DefenseProgress;
+            float ease = 1f - (1f - raw) * (1f - raw);
+
+            // At ease=1 return the target directly; lerp from guard otherwise.
+            if (ease >= 0.999f)
+                return (kf.Left.ElbowX,  kf.Left.ElbowY,  kf.Left.GloveX,  kf.Left.GloveY,
+                        kf.Right.ElbowX, kf.Right.ElbowY, kf.Right.GloveX, kf.Right.GloveY,
+                        kf.Head.OffsetX, kf.Head.OffsetY);
+
+            ArmPose guardL = Snapshot.IsSouthpaw ? StrikeAnimationFrames.SouthpawRearGuard
+                                                 : StrikeAnimationFrames.GuardLeft;
+            ArmPose guardR = Snapshot.IsSouthpaw ? StrikeAnimationFrames.SouthpawLeadGuard
+                                                 : StrikeAnimationFrames.GuardRight;
+            return (
+                Lerp(guardL.ElbowX, kf.Left.ElbowX,   ease),
+                Lerp(guardL.ElbowY, kf.Left.ElbowY,   ease),
+                Lerp(guardL.GloveX, kf.Left.GloveX,   ease),
+                Lerp(guardL.GloveY, kf.Left.GloveY,   ease),
+                Lerp(guardR.ElbowX, kf.Right.ElbowX,  ease),
+                Lerp(guardR.ElbowY, kf.Right.ElbowY,  ease),
+                Lerp(guardR.GloveX, kf.Right.GloveX,  ease),
+                Lerp(guardR.GloveY, kf.Right.GloveY,  ease),
+                Lerp(0f,            kf.Head.OffsetX,   ease),
+                Lerp(0f,            kf.Head.OffsetY,   ease));
+        }
+
+        if (state == BoxerStateKind.Dodging)
+        {
+            // Whole upper-body group leans far back (see leanX below).
+            // Within that group the head shifts FURTHER backward and rises,
+            // creating a clear backward-arch silhouette.
+            float fullness = Snapshot.DodgePhase switch
+            {
+                StrikePhase.Startup  => Snapshot.DodgeProgress,
+                StrikePhase.Active   => 1f,
+                StrikePhase.Recovery => 1f - Snapshot.DodgeProgress,
+                _                    => 0f
+            };
+            // During the dodge the arms shift — lead arm rises to protect the
+            // exposed temple; rear arm stays lower as a ready counter-position.
+            ArmPose guardL = Snapshot.IsSouthpaw ? StrikeAnimationFrames.SouthpawRearGuard
+                                                 : StrikeAnimationFrames.GuardLeft;
+            ArmPose guardR = Snapshot.IsSouthpaw ? StrikeAnimationFrames.SouthpawLeadGuard
+                                                 : StrikeAnimationFrames.GuardRight;
+            // Dodge target poses: lead arm tucks tighter, rear arm guards side
+            ArmPose dodgeLead = new(-4f, -92f, 14f, -102f);  // tucked up protecting temple
+            ArmPose dodgeRear = new(-8f, -80f, 8f,  -82f);   // lower, ready to counter
+            float lEx_ = Lerp(guardL.ElbowX, dodgeLead.ElbowX, fullness);
+            float lEy_ = Lerp(guardL.ElbowY, dodgeLead.ElbowY, fullness);
+            float lGx_ = Lerp(guardL.GloveX, dodgeLead.GloveX, fullness);
+            float lGy_ = Lerp(guardL.GloveY, dodgeLead.GloveY, fullness);
+            float rEx_ = Lerp(guardR.ElbowX, dodgeRear.ElbowX, fullness);
+            float rEy_ = Lerp(guardR.ElbowY, dodgeRear.ElbowY, fullness);
+            float rGx_ = Lerp(guardR.GloveX, dodgeRear.GloveX, fullness);
+            float rGy_ = Lerp(guardR.GloveY, dodgeRear.GloveY, fullness);
+            return (lEx_, lEy_, lGx_, lGy_, rEx_, rEy_, rGx_, rGy_,
+                    0f,               // rotation handles all lateral displacement
+                    -5f * fullness);  // slight neck extension complements the arch
+        }
+
+        if (state == BoxerStateKind.Ducking)
+        {
+            // Timed duck: body crouches; head drops; arms flanks the lowered head.
+            // DodgePhase / DodgeProgress are reused for duck phase tracking.
+            float fullness = Snapshot.DodgePhase switch
+            {
+                StrikePhase.Startup  => Snapshot.DodgeProgress,
+                StrikePhase.Active   => 1f,
+                StrikePhase.Recovery => 1f - Snapshot.DodgeProgress,
+                _                    => 0f
+            };
+            ArmPose guardL = Snapshot.IsSouthpaw ? StrikeAnimationFrames.SouthpawRearGuard
+                                                 : StrikeAnimationFrames.GuardLeft;
+            ArmPose guardR = Snapshot.IsSouthpaw ? StrikeAnimationFrames.SouthpawLeadGuard
+                                                 : StrikeAnimationFrames.GuardRight;
+            var duckKf = Duck.Instance.Frames.Hold;
+            float lEx_ = Lerp(guardL.ElbowX, duckKf.Left.ElbowX,  fullness);
+            float lEy_ = Lerp(guardL.ElbowY, duckKf.Left.ElbowY,  fullness);
+            float lGx_ = Lerp(guardL.GloveX, duckKf.Left.GloveX,  fullness);
+            float lGy_ = Lerp(guardL.GloveY, duckKf.Left.GloveY,  fullness);
+            float rEx_ = Lerp(guardR.ElbowX, duckKf.Right.ElbowX, fullness);
+            float rEy_ = Lerp(guardR.ElbowY, duckKf.Right.ElbowY, fullness);
+            float rGx_ = Lerp(guardR.GloveX, duckKf.Right.GloveX, fullness);
+            float rGy_ = Lerp(guardR.GloveY, duckKf.Right.GloveY, fullness);
+            // hoy = 70 * fullness → head drops 70 px at full duck
+            return (lEx_, lEy_, lGx_, lGy_, rEx_, rEy_, rGx_, rGy_, 0f, 70f * fullness);
+        }
+
+        if (state == BoxerStateKind.Clinching)
+        {
+            // Both arms reach forward and down — grappling / holding position.
+            // The upper-body lean (applied separately) tilts the whole torso toward
+            // the opponent to complete the clinch silhouette.
+            return (-4f, -85f, 26f, -78f,
+                     6f, -88f, 30f, -82f,
+                    10f,   0f);
+        }
+
+        if (state == BoxerStateKind.Attacking &&
+            Snapshot.CurrentStrikeName != null && Snapshot.CurrentPhase.HasValue)
+        {
+            var strike = StrikeCatalog.Get(Snapshot.CurrentStrikeName);
+            if (strike != null)
+            {
+                // Pass the boxer's actual guard as t=0 so southpaw boxers don't snap
+                // from their shifted guard to the orthodox guard at the first frame.
+                var guardL = Snapshot.IsSouthpaw ? StrikeAnimationFrames.SouthpawRearGuard
+                                                 : StrikeAnimationFrames.GuardLeft;
+                var guardR = Snapshot.IsSouthpaw ? StrikeAnimationFrames.SouthpawLeadGuard
+                                                 : StrikeAnimationFrames.GuardRight;
+                var kf = strike.Frames.Sample(Snapshot.CurrentPhase.Value, Snapshot.PhaseProgress,
+                                              guardL, guardR);
+                return (kf.Left.ElbowX,  kf.Left.ElbowY,  kf.Left.GloveX,  kf.Left.GloveY,
+                        kf.Right.ElbowX, kf.Right.ElbowY, kf.Right.GloveX, kf.Right.GloveY,
+                        kf.Head.OffsetX, kf.Head.OffsetY);
+            }
+        }
+
+        // Idle / Moving — guard pose.
+        ArmPose leftArm, rightArm;
+        if (Snapshot.IsSouthpaw)
+        {
+            leftArm  = StrikeAnimationFrames.SouthpawRearGuard;  // left = rear
+            rightArm = StrikeAnimationFrames.SouthpawLeadGuard;  // right = lead
+        }
+        else
+        {
+            leftArm  = StrikeAnimationFrames.GuardLeft;   // left = lead
+            rightArm = StrikeAnimationFrames.GuardRight;  // right = rear
+        }
+        return (leftArm.ElbowX,  leftArm.ElbowY,  leftArm.GloveX,  leftArm.GloveY,
+                rightArm.ElbowX, rightArm.ElbowY, rightArm.GloveX, rightArm.GloveY,
+                0f, 0f);
+    }
+
+    // ── Transform ─────────────────────────────────────────────────────────────
+    private string Transform
+    {
+        get
+        {
+            string x = Fmt(Snapshot.PositionX);
+            return Snapshot.State is BoxerStateKind.KnockedDown or BoxerStateKind.KnockedOut
+                ? $"translate({x}, 340)"   // shift up so the lying figure is visible in the cropped view
+                : $"translate({x}, 378)";  // standing: feet on floor (legs below crop — intentional)
+        }
+    }
+
+    private string ScaleTransform =>
+        Snapshot.Stance == Side.Right ? "scale(-1,1)" : "scale(1,1)";
+
+    private string Fmt(float v) =>
+        v.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+}
+
+@{
+    // ── Pose ──────────────────────────────────────────────────────────────────
+    var (lEx, lEy, lGx, lGy, rEx, rEy, rGx, rGy, hox, hoy) = GetPose();
+    bool isDown = Snapshot.State is BoxerStateKind.KnockedDown or BoxerStateKind.KnockedOut;
+
+    // ── Boxing dance: bend KNEES, keep FEET planted ───────────────────────────
+    bool dancing = !isDown &&
+                   Snapshot.State is BoxerStateKind.Idle or BoxerStateKind.Moving;
+    float bodyDY = dancing
+        ? (float)(Math.Sin(Snapshot.IdlePhase * Math.PI * 2) * 3.0)
+        : 0f;
+
+    // Duck crouches the whole body (30 % of the head drop).
+    // Applies to both Defending (held duck) and Ducking (timed auto-return duck).
+    float crouchDY = (Snapshot.State is BoxerStateKind.Defending or BoxerStateKind.Ducking)
+        ? hoy * 0.3f : 0f;
+    float totalBodyDY = bodyDY + crouchDY;
+
+    // Knees move at 55 % of the body displacement (partial bend feels natural).
+    float kneeDY = totalBodyDY * 0.55f;
+
+    // Apply to arm / glove positions.
+    lEy += totalBodyDY;  lGy += totalBodyDY;
+    rEy += totalBodyDY;  rGy += totalBodyDY;
+
+    // Head follows dance bounce only — hoy (duck) already carries the full offset.
+    float headY  = HeadDefaultY + hoy + bodyDY;
+    float headX  = hox;
+    // Torso and legs follow totalBodyDY.
+    float torsoY  = -90f + totalBodyDY;
+    float shortsY = -58f + totalBodyDY;
+    float hipY    = -55f + totalBodyDY;
+
+    // Shoulder attachment points (move with upper body).
+    float sLY = ShoulderLY + totalBodyDY;
+    float sRY = ShoulderRY + totalBodyDY;
+
+    // ── Upper-body lean during movement ──────────────────────────────────────
+    // While blocking, lean is halved — posture stays upright but tips slightly.
+    // During a clinch, the body always leans hard toward the opponent (14 px).
+    float leanX = 0f;
+    if (!isDown)
+    {
+        if (Snapshot.State == BoxerStateKind.Clinching)
+        {
+            leanX = 14f;   // always lean into the opponent during clinch
+        }
+        else if (Snapshot.MovingDirection != MovementDirection.None)
+        {
+            float leanMag = Snapshot.State switch
+            {
+                BoxerStateKind.Moving    or BoxerStateKind.Attacking => 10f,
+                BoxerStateKind.Defending                             => 5f,
+                _                                                    => 0f
+            };
+            if (leanMag > 0f)
+                leanX = Snapshot.MovingDirection == MovementDirection.Forward ? leanMag : -leanMag;
+        }
+    }
+
+    // ── Head-slip dodge: upper body ROTATES backward around the hip joint ───────
+    // Rotating around (0, hipY) instead of translating keeps the waistband
+    // essentially stationary while the head/shoulders arc backward — the body
+    // stays visually attached to the legs at the hip.
+    //
+    // At 20°: hip barely moves (<1 px), chest moves ~10 px, head ~20 px.
+    string upperBodyRotStr = "";
+    if (!isDown && Snapshot.State == BoxerStateKind.Dodging)
+    {
+        float dodgeFullness = Snapshot.DodgePhase switch
+        {
+            StrikePhase.Startup  => Snapshot.DodgeProgress,
+            StrikePhase.Active   => 1f,
+            StrikePhase.Recovery => 1f - Snapshot.DodgeProgress,
+            _                    => 0f
+        };
+        // Negative angle = counter-clockwise in local space.
+        // scale(-1,1) on P2 mirrors the axis, so the same angle leans
+        // both boxers away from their opponent correctly.
+        float angle = -20f * dodgeFullness;
+        upperBodyRotStr = $"rotate({Fmt(angle)},0,{Fmt(hipY)})";
+    }
+
+    // ── Punch telegraph: body coils backward before slow punches fire ─────────
+    // During the first TelegraphMs of a strike's Startup, the upper body rotates
+    // backward (away from opponent) with a smooth bell-curve envelope.
+    // Fast punches (jabs) have TelegraphMs = 0 → no rotation, no tell.
+    // Slow punches (hooks) have TelegraphMs = 50-75 ms and a moderate angle,
+    // giving a readable but not exaggerated body-loading movement.
+    if (!isDown && string.IsNullOrEmpty(upperBodyRotStr) &&
+        Snapshot.State == BoxerStateKind.Attacking &&
+        Snapshot.CurrentPhase == StrikePhase.Startup &&
+        Snapshot.CurrentStrikeName != null)
+    {
+        var atkStrike = StrikeCatalog.Get(Snapshot.CurrentStrikeName);
+        if (atkStrike != null && atkStrike.TelegraphMs > 0)
+        {
+            float telegraphFrac = (float)atkStrike.TelegraphMs / atkStrike.StartupMs;
+            float tWithinTelegraph = Snapshot.PhaseProgress / Math.Max(telegraphFrac, 0.0001f);
+            if (tWithinTelegraph <= 1f)
+            {
+                // Bell-curve envelope: rises quickly, peaks, then fades as punch launches.
+                // sin(t·π) is 0 at t=0, peaks at t=0.5, returns to 0 at t=1.
+                float envelope = (float)Math.Sin(tWithinTelegraph * Math.PI);
+                // 12° is the maximum rotation; TelegraphMagnitude scales it per punch.
+                float angle = 12f * atkStrike.TelegraphMagnitude * envelope;
+                // Positive angle here → rotate() applies it away from opponent for
+                // both boxers (negative for P1 facing right, mirrored via scale(-1,1) for P2).
+                upperBodyRotStr = $"rotate({Fmt(-angle)},0,{Fmt(hipY)})";
+            }
+        }
+    }
+
+    string leanGroupTransform = string.IsNullOrEmpty(upperBodyRotStr)
+        ? $"translate({Fmt(leanX)},0)"
+        : $"translate({Fmt(leanX)},0) {upperBodyRotStr}";
+
+    // ── Leg positions — NO CROSSING ───────────────────────────────────────────
+    // Lead leg always goes toward +X (toward opponent).
+    // Rear  leg always goes toward −X (away from opponent).
+    // Hip attachment points match the direction so each leg stays on its own side.
+    bool southpaw = Snapshot.IsSouthpaw;
+
+    // Left leg
+    float lHipX  = southpaw ? RearHipX  : LeadHipX;
+    float lKneeX = southpaw ? BackKneeX : LeadKneeX;
+    float lFootX = southpaw ? BackFootX : LeadFootX;
+    float lKneeY = BaseKneeY + kneeDY;
+
+    // Right leg
+    float rHipX  = southpaw ? LeadHipX  : RearHipX;
+    float rKneeX = southpaw ? LeadKneeX : BackKneeX;
+    float rFootX = southpaw ? LeadFootX : BackFootX;
+    float rKneeY = BaseKneeY + kneeDY;
+
+    // ── Walking animation — knees lift and feet step alternately ─────────────
+    bool walking = !isDown &&
+                   Snapshot.WalkPhase > 0f &&
+                   Snapshot.MovingDirection != MovementDirection.None &&
+                   Snapshot.State is BoxerStateKind.Moving or BoxerStateKind.Attacking
+                                  or BoxerStateKind.Defending;
+    if (walking)
+    {
+        const double TWO_PI = Math.PI * 2;
+        double wt = Snapshot.WalkPhase * TWO_PI;
+        // Lead cycle at phase 0, rear cycle at phase 0.5 (opposite feet)
+        float leadLiftY = (float)(Math.Sin(wt)         * 6.5);
+        float rearLiftY = (float)(Math.Sin(wt + Math.PI) * 4.5);
+        float leadStepX = (float)(Math.Sin(wt)         * 3.0);
+        float rearStepX = (float)(Math.Sin(wt + Math.PI) * 2.0);
+
+        if (!southpaw)
+        {
+            // Orthodox: left = lead, right = rear
+            lKneeY -= leadLiftY;  lFootX += leadStepX;
+            rKneeY -= rearLiftY;  rFootX += rearStepX;
+        }
+        else
+        {
+            // Southpaw: right = lead, left = rear
+            rKneeY -= leadLiftY;  rFootX += leadStepX;
+            lKneeY -= rearLiftY;  lFootX += rearStepX;
+        }
+    }
+
+    string skinColor  = "#f0c27f";
+    string shirtColor = "#555";
+    string legColor   = "#333";
+
+    // Height scale string for SVG — grows from floor (Y=0) upward.
+    string hStr = Snapshot.HeightFactor.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+
+    // ── Damage fractions (0 = pristine, 1 = sub-pool empty) ─────────────────
+    float headDmgFrac = Snapshot.MaxHeadHealth > 0f
+        ? 1f - Snapshot.HeadHealth / Snapshot.MaxHeadHealth : 0f;
+    float bodyDmgFrac = Snapshot.MaxBodyHealth > 0f
+        ? 1f - Snapshot.BodyHealth / Snapshot.MaxBodyHealth : 0f;
+
+    // Pre-computed KO blood overlay opacity (used in the knocked-down render path)
+    string koOpacityStr = ((float)Math.Min(headDmgFrac + 0.25f, 0.65f))
+        .ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+}
+
+<g transform="@Transform">
+<g transform="@ScaleTransform">
+<g transform="scale(@hStr, @hStr)">
+
+@if (!isDown)
+{
+    @* ── Rear leg (drawn first, behind everything) ────────────────────────── *@
+    <line x1="@Fmt(rHipX)" y1="@Fmt(hipY)"
+          x2="@Fmt(rKneeX)" y2="@Fmt(rKneeY)"
+          stroke="@legColor" stroke-width="9" stroke-linecap="round" />
+    <line x1="@Fmt(rKneeX)" y1="@Fmt(rKneeY)" x2="@Fmt(rFootX)" y2="0"
+          stroke="@legColor" stroke-width="7" stroke-linecap="round" />
+    <circle cx="@Fmt(rKneeX)" cy="@Fmt(rKneeY)" r="5" fill="@legColor" />
+    <ellipse cx="@Fmt(rFootX)" cy="-3" rx="13" ry="6" fill="#222" />
+
+    @* ── Lead leg ────────────────────────────────────────────────────────── *@
+    <line x1="@Fmt(lHipX)" y1="@Fmt(hipY)"
+          x2="@Fmt(lKneeX)" y2="@Fmt(lKneeY)"
+          stroke="@legColor" stroke-width="10" stroke-linecap="round" />
+    <line x1="@Fmt(lKneeX)" y1="@Fmt(lKneeY)" x2="@Fmt(lFootX)" y2="0"
+          stroke="@legColor" stroke-width="8" stroke-linecap="round" />
+    <circle cx="@Fmt(lKneeX)" cy="@Fmt(lKneeY)" r="5" fill="@legColor" />
+    <ellipse cx="@Fmt(lFootX)" cy="-3" rx="14" ry="7" fill="#222" />
+
+    @* ── Upper body: moves with lean/dodge. Shorts are inside so the whole    *@
+    @* waist+torso unit rotates together — the hip pivot keeps it attached.    *@
+    <g transform="@leanGroupTransform">
+
+        @* Shorts — just above the rotation pivot so they barely shift on dodge *@
+        <rect x="-16" y="@Fmt(shortsY)" width="32" height="20" fill="@TrunksColor" rx="3" />
+
+        @* Torso *@
+        <rect x="-13" y="@Fmt(torsoY)" width="26" height="38" fill="@shirtColor" rx="4" />
+
+        @* ── Body damage — red bruises / blood on the torso ──────────────────── *@
+        @if (!isDown && bodyDmgFrac > 0.25f)
+        {
+            @* Small red contusion on the ribs *@
+            <rect x="-1" y="@Fmt(torsoY + 8f)" width="8" height="4"
+                  fill="#7b1010" fill-opacity="0.65" rx="1" />
+        }
+        @if (!isDown && bodyDmgFrac > 0.50f)
+        {
+            @* Larger bruise spreading across the mid-torso *@
+            <rect x="-9" y="@Fmt(torsoY + 14f)" width="13" height="6"
+                  fill="#7b1010" fill-opacity="0.65" rx="2" />
+            <line x1="3"  y1="@Fmt(torsoY + 7f)"
+                  x2="5"  y2="@Fmt(torsoY + 18f)"
+                  stroke="#c0392b" stroke-width="1.5" stroke-linecap="round" />
+        }
+        @if (!isDown && bodyDmgFrac > 0.75f)
+        {
+            @* Heavy damage — multiple bruises and blood streaks *@
+            <rect x="-9" y="@Fmt(torsoY + 22f)" width="16" height="7"
+                  fill="#7b1010" fill-opacity="0.70" rx="2" />
+            <line x1="-2" y1="@Fmt(torsoY + 11f)"
+                  x2="-4" y2="@Fmt(torsoY + 29f)"
+                  stroke="#c0392b" stroke-width="1.5" stroke-linecap="round" />
+            <line x1="5"  y1="@Fmt(torsoY + 15f)"
+                  x2="4"  y2="@Fmt(torsoY + 32f)"
+                  stroke="#8b0000" stroke-width="1" stroke-linecap="round" />
+        }
+
+        @* Head *@
+        <circle cx="@Fmt(headX)" cy="@Fmt(headY)" r="@HeadRadius"
+                fill="@skinColor" stroke="#333" stroke-width="2" />
+        @* Eyes *@
+        <circle cx="@Fmt(headX - 6f)" cy="@Fmt(headY - 3f)" r="2.5" fill="#333" />
+        <circle cx="@Fmt(headX + 6f)" cy="@Fmt(headY - 3f)" r="2.5" fill="#333" />
+
+        @* ── Head damage — cuts and blood ────────────────────────────────────── *@
+        @if (!isDown && headDmgFrac > 0.20f)
+        {
+            @* Cut above the left eyebrow *@
+            <line x1="@Fmt(headX - 10f)" y1="@Fmt(headY - 6f)"
+                  x2="@Fmt(headX - 4f)"  y2="@Fmt(headY - 4f)"
+                  stroke="#8b0000" stroke-width="2" stroke-linecap="round" />
+        }
+        @if (!isDown && headDmgFrac > 0.40f)
+        {
+            @* Blood dripping from the cut *@
+            <line x1="@Fmt(headX - 7f)" y1="@Fmt(headY - 4f)"
+                  x2="@Fmt(headX - 8f)" y2="@Fmt(headY + 6f)"
+                  stroke="#c0392b" stroke-width="2" stroke-linecap="round" />
+            <circle cx="@Fmt(headX - 8f)" cy="@Fmt(headY + 7f)"
+                    r="2" fill="#c0392b" />
+        }
+        @if (!isDown && headDmgFrac > 0.60f)
+        {
+            @* Reddish tint across the face + second cut on the cheek *@
+            <circle cx="@Fmt(headX)" cy="@Fmt(headY)" r="18"
+                    fill="#c0392b" fill-opacity="0.25" />
+            <line x1="@Fmt(headX + 5f)"  y1="@Fmt(headY - 9f)"
+                  x2="@Fmt(headX + 10f)" y2="@Fmt(headY - 3f)"
+                  stroke="#8b0000" stroke-width="1.5" stroke-linecap="round" />
+        }
+        @if (!isDown && headDmgFrac > 0.80f)
+        {
+            @* Heavily bloodied — strong tint and multiple drips *@
+            <circle cx="@Fmt(headX)" cy="@Fmt(headY)" r="18"
+                    fill="#c0392b" fill-opacity="0.45" />
+            <line x1="@Fmt(headX - 4f)" y1="@Fmt(headY - 4f)"
+                  x2="@Fmt(headX - 5f)" y2="@Fmt(headY + 12f)"
+                  stroke="#c0392b" stroke-width="1.5" stroke-linecap="round" />
+            <line x1="@Fmt(headX + 7f)" y1="@Fmt(headY - 5f)"
+                  x2="@Fmt(headX + 6f)" y2="@Fmt(headY + 5f)"
+                  stroke="#c0392b" stroke-width="1.5" stroke-linecap="round" />
+        }
+
+        @* Left arm — upper arm → forearm → glove *@
+        <line x1="@Fmt(ShoulderLX)" y1="@Fmt(sLY)"
+              x2="@Fmt(lEx)"        y2="@Fmt(lEy)"
+              stroke="@skinColor" stroke-width="7" stroke-linecap="round" />
+        <line x1="@Fmt(lEx)" y1="@Fmt(lEy)"
+              x2="@Fmt(lGx)" y2="@Fmt(lGy)"
+              stroke="@skinColor" stroke-width="6" stroke-linecap="round" />
+        <circle cx="@Fmt(lGx)" cy="@Fmt(lGy)" r="@GloveRadius"
+                fill="@TrunksColor" stroke="#111" stroke-width="1.5" />
+
+        @* Right arm — upper arm → forearm → glove *@
+        <line x1="@Fmt(ShoulderRX)" y1="@Fmt(sRY)"
+              x2="@Fmt(rEx)"        y2="@Fmt(rEy)"
+              stroke="@skinColor" stroke-width="7" stroke-linecap="round" />
+        <line x1="@Fmt(rEx)" y1="@Fmt(rEy)"
+              x2="@Fmt(rGx)" y2="@Fmt(rGy)"
+              stroke="@skinColor" stroke-width="6" stroke-linecap="round" />
+        <circle cx="@Fmt(rGx)" cy="@Fmt(rGy)" r="@GloveRadius"
+                fill="@TrunksColor" stroke="#111" stroke-width="1.5" />
+
+    </g>@* /upper body lean group *@
+}
+else
+{
+    @* ── Knocked down: lying flat on ring floor ─────────────────────────── *@
+
+    @* Legs (drawn first — partially behind torso) *@
+    <line x1="16"  y1="-10" x2="46"  y2="-4"  stroke="@skinColor" stroke-width="11" stroke-linecap="round" />
+    <line x1="46"  y1="-4"  x2="64"  y2="-6"  stroke="@skinColor" stroke-width="8"  stroke-linecap="round" />
+    <line x1="10"  y1="-20" x2="38"  y2="-12" stroke="@skinColor" stroke-width="11" stroke-linecap="round" />
+    <line x1="38"  y1="-12" x2="58"  y2="-14" stroke="@skinColor" stroke-width="8"  stroke-linecap="round" />
+
+    @* Torso *@
+    <ellipse cx="0" cy="-26" rx="36" ry="18" fill="@skinColor" />
+
+    @* Trunks *@
+    <rect x="-15" y="-40" width="30" height="24" fill="@TrunksColor" rx="5" />
+
+    @* Right arm — visible beside body *@
+    <line x1="22" y1="-26" x2="40" y2="-14" stroke="@skinColor" stroke-width="7" stroke-linecap="round" />
+    <circle cx="42" cy="-13" r="8" fill="@TrunksColor" />
+
+    @* Left arm — sprawled above body *@
+    <line x1="-22" y1="-30" x2="-40" y2="-42" stroke="@skinColor" stroke-width="7" stroke-linecap="round" />
+    <circle cx="-42" cy="-43" r="8" fill="@TrunksColor" />
+
+    @* Head *@
+    <circle cx="-52" cy="-26" r="14" fill="@skinColor" stroke="#333" stroke-width="2" />
+
+    @* Face — closed eyes (dazed look) *@
+    <line x1="-58" y1="-28" x2="-54" y2="-28" stroke="#333" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="-50" y1="-28" x2="-46" y2="-28" stroke="#333" stroke-width="2.5" stroke-linecap="round" />
+    @* Grimace *@
+    <path d="M -57 -22 Q -52 -19 -47 -22" stroke="#555" stroke-width="1.5" fill="none" stroke-linecap="round" />
+
+    @* Blood overlay on head (scales with head damage taken) *@
+    <circle cx="-52" cy="-26" r="14" fill="#c0392b" fill-opacity="@koOpacityStr" />
+}
+
+</g>@* /height scale *@
+</g>@* /stance flip *@
+</g>@* /translate *@

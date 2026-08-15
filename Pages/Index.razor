@@ -1,0 +1,186 @@
+@page "/"
+@using BoxingGame.Domain.Match
+@inject MatchRegistry Registry
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="lobby">
+    <h1>&#x1F94A; Boxing Game</h1>
+    <p class="subtitle">2-Player Real-Time Browser Boxing</p>
+
+    @* ── Online mode ─────────────────────────────────────────────────── *@
+    <div class="card">
+        <h2>&#x1F310; Online — 2 browser tabs</h2>
+        <p class="card-hint">Share the match code with your opponent in another tab.</p>
+        <div class="hand-row">
+            <span class="hand-label">Your stance:</span>
+            <label class="hand-opt @(_p1Southpaw ? "" : "hand-active")">
+                <input type="radio" name="onlineHand" checked="@(!_p1Southpaw)"
+                       @onchange="@(() => _p1Southpaw = false)" /> Orthodox
+            </label>
+            <label class="hand-opt @(_p1Southpaw ? "hand-active" : "")">
+                <input type="radio" name="onlineHand" checked="@(_p1Southpaw)"
+                       @onchange="@(() => _p1Southpaw = true)" /> Southpaw
+            </label>
+        </div>
+        <button class="btn-primary" @onclick="CreateOnlineMatch">Create Match</button>
+    </div>
+
+    @* ── Join online ─────────────────────────────────────────────────── *@
+    <div class="card">
+        <h2>Join Online Match</h2>
+        <div class="hand-row" style="margin-bottom:12px">
+            <span class="hand-label">Your stance:</span>
+            <label class="hand-opt @(_joinSouthpaw ? "" : "hand-active")">
+                <input type="radio" name="joinHand" checked="@(!_joinSouthpaw)"
+                       @onchange="@(() => _joinSouthpaw = false)" /> Orthodox
+            </label>
+            <label class="hand-opt @(_joinSouthpaw ? "hand-active" : "")">
+                <input type="radio" name="joinHand" checked="@(_joinSouthpaw)"
+                       @onchange="@(() => _joinSouthpaw = true)" /> Southpaw
+            </label>
+        </div>
+        <input @bind="_joinCode" @bind:event="oninput" placeholder="Enter 6-char code"
+               maxlength="6" class="code-input" @onkeyup="OnJoinKeyUp" />
+        <button class="btn-secondary" @onclick="JoinMatch" disabled="@(_joinCode.Length < 3)">Join</button>
+        @if (_joinError != null)
+        {
+            <p class="error">@_joinError</p>
+        }
+    </div>
+
+    @* ── Local mode ──────────────────────────────────────────────────── *@
+    @if (!_isMobile)
+    {
+        <div class="card">
+            <h2>&#x1F3AE; Local — 2 players, 1 tab</h2>
+            <p class="card-hint">Share the keyboard. Red uses left keys, Blue uses right keys.</p>
+
+            <div class="local-hands">
+                <div class="local-player">
+                    <span class="player-tag red-tag" style="margin-bottom:6px;display:block">RED</span>
+                    <label class="hand-opt @(_lp1Southpaw ? "" : "hand-active")">
+                        <input type="radio" name="lp1Hand" checked="@(!_lp1Southpaw)"
+                               @onchange="@(() => _lp1Southpaw = false)" /> Orthodox
+                    </label>
+                    <label class="hand-opt @(_lp1Southpaw ? "hand-active" : "")">
+                        <input type="radio" name="lp1Hand" checked="@(_lp1Southpaw)"
+                               @onchange="@(() => _lp1Southpaw = true)" /> Southpaw
+                    </label>
+                </div>
+                <div class="local-player">
+                    <span class="player-tag blue-tag" style="margin-bottom:6px;display:block">BLUE</span>
+                    <label class="hand-opt @(_lp2Southpaw ? "" : "hand-active")">
+                        <input type="radio" name="lp2Hand" checked="@(!_lp2Southpaw)"
+                               @onchange="@(() => _lp2Southpaw = false)" /> Orthodox
+                    </label>
+                    <label class="hand-opt @(_lp2Southpaw ? "hand-active" : "")">
+                        <input type="radio" name="lp2Hand" checked="@(_lp2Southpaw)"
+                               @onchange="@(() => _lp2Southpaw = true)" /> Southpaw
+                    </label>
+                </div>
+            </div>
+
+            <button class="btn-primary btn-local" @onclick="CreateLocalMatch">Play Local</button>
+        </div>
+    }
+    else
+    {
+        <div class="card card-mobile-notice">
+            <h2>&#x1F3AE; Local mode unavailable on mobile</h2>
+            <p class="card-hint">Local 2-player requires a physical keyboard shared between both players. Create or join an <strong>Online</strong> match above to play against someone on a different device.</p>
+        </div>
+    }
+
+    @* ── Controls reference — desktop only (mobile uses touch buttons) *@
+    @if (!_isMobile)
+    {
+        <div class="controls-hint">
+            <h3>Controls</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align:left;color:#888;padding-bottom:6px">Action</th>
+                        <th style="text-align:left;color:#c0392b;padding-bottom:6px">RED (P1)</th>
+                        <th style="text-align:left;color:#2980b9;padding-bottom:6px">BLUE (P2, local)</th>
+                    </tr>
+                </thead>
+                <tr><td>Move back / forward</td><td><kbd>A</kbd> / <kbd>D</kbd></td><td><kbd>←</kbd> / <kbd>→</kbd></td></tr>
+                <tr><td>Sprint (hold)</td><td><kbd>W</kbd></td><td><kbd>↑</kbd></td></tr>
+                <tr><td>Block (hold)</td><td><kbd>S</kbd></td><td><kbd>↓</kbd></td></tr>
+                <tr><td>Head slip (tap)</td><td><kbd>Q</kbd></td><td><kbd>/</kbd></td></tr>
+                <tr><td>Duck (auto-return)</td><td><kbd>Z</kbd></td><td><kbd>,</kbd></td></tr>
+                <tr><td>Body shots (hold + punch)</td><td><kbd>E</kbd></td><td><kbd>M</kbd></td></tr>
+                <tr><td>Left / Right Jab</td><td><kbd>F</kbd> / <kbd>G</kbd></td><td><kbd>I</kbd> / <kbd>O</kbd></td></tr>
+                <tr><td>Left / Right Hook</td><td><kbd>R</kbd> / <kbd>T</kbd></td><td><kbd>K</kbd> / <kbd>L</kbd></td></tr>
+                <tr><td>Left / Right Uppercut</td><td><kbd>C</kbd> / <kbd>V</kbd></td><td><kbd>U</kbd> / <kbd>P</kbd></td></tr>
+            </table>
+            <p class="hint-note" style="margin-top:10px;color:#777;font-size:0.82rem">
+                Block must be held <em>before</em> the opponent's glove arrives.
+                Head slip evades head punches during its active window.
+                Hooks require close range; jabs reach further.
+            </p>
+        </div>
+    }
+</div>
+
+@code {
+    // ── Mobile detection ──────────────────────────────────────────────────────
+    // Checked once after first render (JS not available during SSR prerender).
+    private bool _isMobile;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _isMobile = await JS.InvokeAsync<bool>("boxingGame.isMobile");
+            StateHasChanged();
+        }
+    }
+
+    // Online creator handedness
+    private bool _p1Southpaw;
+
+    // Online joiner handedness
+    private bool   _joinSouthpaw;
+    private string _joinCode = "";
+    private string? _joinError;
+
+    // Local mode handedness
+    private bool _lp1Southpaw;
+    private bool _lp2Southpaw;
+
+    private void CreateOnlineMatch()
+    {
+        var match = Registry.CreateMatch();
+        Nav.NavigateTo($"/match/{match.MatchCode}?sw={(_p1Southpaw ? "1" : "0")}");
+    }
+
+    private void CreateLocalMatch()
+    {
+        var match = Registry.CreateLocalMatch(_lp1Southpaw, _lp2Southpaw);
+        Nav.NavigateTo($"/match/{match.MatchCode}");
+    }
+
+    private void JoinMatch()
+    {
+        var code = _joinCode.Trim().ToUpperInvariant();
+        var match = Registry.GetMatch(code);
+        if (match == null)
+        {
+            _joinError = "Match not found. Check the code and try again.";
+            return;
+        }
+        if (match.IsLocalMode)
+        {
+            _joinError = "That is a local match — it cannot be joined from another tab.";
+            return;
+        }
+        Nav.NavigateTo($"/match/{code}?sw={(_joinSouthpaw ? "1" : "0")}");
+    }
+
+    private void OnJoinKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") JoinMatch();
+    }
+}

@@ -1,0 +1,20 @@
+@* Draws the static ring: floor, three ropes, two corner posts.
+   All geometry is constrained to the SVG viewBox (x 222..678, y 140..392)
+   so nothing renders off-screen and fighters are always in view. *@
+
+<g id="ring">
+    @* Floor *@
+    <rect x="222" y="378" width="456" height="18" fill="#c8a96e" />
+
+    @* Three ropes — span the full visible width *@
+    <line x1="222" y1="200" x2="678" y2="200" stroke="#8B0000" stroke-width="4" />
+    <line x1="222" y1="250" x2="678" y2="250" stroke="#8B0000" stroke-width="4" />
+    <line x1="222" y1="300" x2="678" y2="300" stroke="#8B0000" stroke-width="4" />
+
+    @* Corner posts — anchored at each screen edge *@
+    <rect x="222" y="185" width="14" height="205" fill="#4a4a4a" rx="3" />
+    <rect x="664" y="185" width="14" height="205" fill="#4a4a4a" rx="3" />
+
+    @* Ring canvas tint *@
+    <rect x="222" y="195" width="456" height="185" fill="#e8d5a0" opacity="0.25" />
+</g>
