@@ -2,6 +2,7 @@ using BoxingGame.Domain.Match;
 using BoxingGame.Networking;
 
 var builder = WebApplication.CreateBuilder(args);
+// Listen on all interfaces so LAN clients can connect during local play/testing.
 builder.WebHost.ConfigureKestrel(o => o.ListenAnyIP(5000));
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
